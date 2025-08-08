@@ -264,7 +264,6 @@ def save_db_config(config: DBConfigCreate, current_user: str = Depends(get_curre
                 "database_name": config.database_name,
                 "db_schema_json": config.db_schema_json
             }
-            vector_id = app.state.voice_assistant._setup_pinecone_vectors(db_config)
             message = "Database configuration updated"
         else:
             # Create new configuration
@@ -286,14 +285,8 @@ def save_db_config(config: DBConfigCreate, current_user: str = Depends(get_curre
                 "database_name": config.database_name,
                 "db_schema_json": config.db_schema_json
             }
-            vector_id = app.state.voice_assistant._setup_pinecone_vectors(db_config)
+            # vector_id = app.state.voice_assistant._setup_pinecone_vectors(db_config)
             message = "Database configuration saved"
-        print(vector_id)
-        cursor.execute("""
-            UPDATE users 
-            SET embedding_id = %s
-            WHERE username = %s
-        """, (vector_id, current_user))
 
         db_conn.commit()
         
