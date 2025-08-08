@@ -254,16 +254,6 @@ def save_db_config(config: DBConfigCreate, current_user: str = Depends(get_curre
                 encrypted_password, config.database_name, config.db_schema_json,
                 user_id
             ))
-            db_config = {
-                "id": existing_config[0],
-                "db_type": config.db_type,
-                "host": config.host,
-                "port": config.port,
-                "username": config.username,
-                "encrypted_password": encrypted_password,
-                "database_name": config.database_name,
-                "db_schema_json": config.db_schema_json
-            }
             message = "Database configuration updated"
         else:
             # Create new configuration
@@ -275,18 +265,6 @@ def save_db_config(config: DBConfigCreate, current_user: str = Depends(get_curre
                 user_id, config.db_type, config.host, config.port, config.username,
                 encrypted_password, config.database_name, config.db_schema_json
             ))
-            db_config = {
-                "id": cursor.lastrowid,
-                "db_type": config.db_type,
-                "host": config.host,
-                "port": config.port,
-                "username": config.username,
-                "encrypted_password": encrypted_password,
-                "database_name": config.database_name,
-                "db_schema_json": config.db_schema_json
-            }
-            # vector_id = app.state.voice_assistant._setup_pinecone_vectors(db_config)
-            message = "Database configuration saved"
 
         db_conn.commit()
         

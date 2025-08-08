@@ -293,15 +293,24 @@ class VoiceAssistant:
                     return "Hello! I'm your database assistant. How can I help with your database queries today?"
             
             # Perform similarity search with Pinecone
-            try:
-                retrieved_docs = self._similarity_search_pinecone(question, k=1,vector_id=vector_id)
-                if not retrieved_docs or retrieved_docs[0][1] > 1.0:
-                    return "I can only answer questions about your database schema. Your query appears to be out of context."
+            # try:
+            #     retrieved_docs = self._similarity_search_pinecone(question, k=1,vector_id=vector_id)
+            #     if not retrieved_docs or retrieved_docs[0][1] > 1.0:
+            #         return "I can only answer questions about your database schema. Your query appears to be out of context."
                 
-                schema_text = retrieved_docs[0][0].page_content
+            #     schema_text = retrieved_docs[0][0].page_content
+            # except Exception as e:
+            #     logger.error(f"Similarity search error: {str(e)}\n{traceback.format_exc()}")
+            #     return "I'm having trouble finding relevant information in your database schema. Could you try a more specific question about your database?"
+            
+            try:
+                schema_text = self._extract_schema_with_retry(db_config)
+            except SchemaExtractionError as e:
+                logger.error(f"Schema extraction error: {str(e)}")
+                return f"I encountered an error extracting the database schema: {str(e)}. Could you try again?"
             except Exception as e:
-                logger.error(f"Similarity search error: {str(e)}\n{traceback.format_exc()}")
-                return "I'm having trouble finding relevant information in your database schema. Could you try a more specific question about your database?"
+                logger.error(f"Unexpected schema extraction error: {str(e)}\n{traceback.format_exc()}")
+                return "I had an unexpected issue extracting the database schema. Please try again with a clearer question about your database."
             
             # Generate query with error handling
             try:
@@ -356,20 +365,34 @@ class VoiceAssistant:
             # Select appropriate system prompt
             if db_config['db_type'] in ['mysql', 'postgresql', 'sqlite', 'sqlserver']:
                 system_prompt = """You are an expert SQL query generator that generates SQL for database-related questions.
+                IMPORTANT:
+                - The schema provided contains the ENTIRE database schema (all tables and columns).
+                - First, determine if the user question is about querying a database (retrieving, filtering, aggregating data, etc.).
+                - Second, check if the question is relevant to the provided schema. 
+                    - If the question mentions entities, tables, or columns NOT present in the schema, consider it irrelevant.
+                    - Example: If schema is about 'students' and the question is about 'animals', mark it as irrelevant.
+                - If the question is NOT database-related OR is irrelevant to the schema:
+                    - Respond with: 
+                    {
+                        "generated": false,
+                        "query": null
+                    }
+                - If the question IS database-related AND relevant to the schema:
+                    - Respond with:
+                    {
+                        "generated": true,
+                        "query": "<SQL query>"
+                    }
+                - Use the schema EXACTLY, referencing only existing tables and columns.
+                - For queries about 'all students' or similar, assume the 'students' table is relevant unless otherwise specified.
+                - The output must always be in strict JSON format with keys "generated" and "query".
 
-        IMPORTANT:
-        - The schema provided contains the ENTIRE database schema (all tables and columns).
-        - Determine if the question is about querying the database (e.g., retrieving, filtering, or aggregating data).
-        - If the question is NOT database-related (e.g., 'make tea', 'what's the weather'), respond ONLY with 'NOT_DB_QUERY'.
-        - If the question is database-related, generate ONLY the SQL query with no explanations.
-        - Use the schema EXACTLY, referencing only existing tables and columns.
-        - For queries about 'all students' or similar, assume the 'students' table is relevant unless otherwise specified.
+                Schema:
+                {schema}
 
-        Schema:
-        {schema}
-
-        User question:
-        {question}"""
+                User question:
+                {question}
+                """
             elif db_config['db_type'] == 'mongodb':
                 system_prompt = """You are an expert MongoDB query generator that generates queries for database-related questions.
 
@@ -408,7 +431,7 @@ class VoiceAssistant:
                     generated_query = response.choices[0].message.content.strip()
                     logger.info(f"Generated query: {generated_query}")
                     
-                    if "NOT_DB_QUERY" in generated_query:
+                    if(not generated_query.generated):
                         logger.info("Model determined the query is not database-related")
                         return ""
                     
