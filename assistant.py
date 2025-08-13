@@ -315,6 +315,7 @@ class VoiceAssistant:
             # Generate query with error handling
             try:
                 query = self._generate_query(question, schema_text, db_config)
+                print(query)
                 if not query:
                     return "I couldn't generate a valid database query from your question. Could you rephrase it to be more specific about the database information you're looking for?"
             except QueryGenerationError as e:
@@ -364,7 +365,8 @@ class VoiceAssistant:
             
             # Select appropriate system prompt
             if db_config['db_type'] in ['mysql', 'postgresql', 'sqlite', 'sqlserver']:
-                system_prompt = """You are an expert SQL query generator that generates SQL for database-related questions.
+                system_prompt =system_prompt = """
+                You are an expert SQL query generator that generates SQL for database-related questions.
                 IMPORTANT:
                 - The schema provided contains the ENTIRE database schema (all tables and columns).
                 - First, determine if the user question is about querying a database (retrieving, filtering, aggregating data, etc.).
@@ -373,16 +375,16 @@ class VoiceAssistant:
                     - Example: If schema is about 'students' and the question is about 'animals', mark it as irrelevant.
                 - If the question is NOT database-related OR is irrelevant to the schema:
                     - Respond with: 
-                    {
+                    {{
                         "generated": false,
                         "query": null
-                    }
+                    }}
                 - If the question IS database-related AND relevant to the schema:
                     - Respond with:
-                    {
+                    {{
                         "generated": true,
                         "query": "<SQL query>"
-                    }
+                    }}
                 - Use the schema EXACTLY, referencing only existing tables and columns.
                 - For queries about 'all students' or similar, assume the 'students' table is relevant unless otherwise specified.
                 - The output must always be in strict JSON format with keys "generated" and "query".
@@ -427,7 +429,6 @@ class VoiceAssistant:
                         top_p=1,
                         stream=False
                     )
-                    
                     generated_query = response.choices[0].message.content.strip()
                     logger.info(f"Generated query: {generated_query}")
                     
