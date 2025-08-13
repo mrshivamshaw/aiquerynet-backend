@@ -430,17 +430,25 @@ class VoiceAssistant:
                         stream=False
                     )
                     generated_query = response.choices[0].message.content.strip()
-                    logger.info(f"Generated query: {generated_query}")
-                    
-                    if(not generated_query.generated):
+                    try:
+                        generated_query = json.loads(generated_query)
+                    except json.JSONDecodeError:
+                        logger.error(f"Failed to parse model output as JSON: {generated_query}")
+                        return ""
+
+                    if not generated_query["generated"]:
                         logger.info("Model determined the query is not database-related")
                         return ""
+
                     
-                    cleaned_response = re.sub(r"<think>.*?</think>", "", generated_query, flags=re.DOTALL).strip()
-                    if not cleaned_response:
-                        raise QueryGenerationError("Generated query is empty after cleaning")
+                    # logger.info(f"Generated query: {generated_query}")
+                    # # cleaned_response = re.sub(r"<think>.*?</think>", "", generated_query, flags=re.DOTALL).strip()
+                    # # if not cleaned_response:
+                    # #     raise QueryGenerationError("Generated query is empty after cleaning")
                     
-                    return cleaned_response
+                    # return cleaned_response
+                    
+                    return generated_query["query"]
                     
                 except Exception as e:
                     if attempt < self.max_retries - 1:
@@ -473,24 +481,40 @@ class VoiceAssistant:
             else:
                 sql_response_str = str(sql_data)
             
-            # Create a more contextually aware prompt
-            prompt = """You are a helpful database assistant. Respond to the user's question based on the context:
+            from string import Template
 
-        1. If the question is a greeting (like "hello", "hi", "good morning", "thank you", etc.), respond with a friendly greeting.
+            prompt_template = Template("""
+            You are a rendering assistant. Produce ONLY a minimal HTML snippet styled with Tailwind CSS classes.
 
-        2. If SQL data is provided, generate a natural language response that explains the data results clearly.
+            Rules (mandatory):
+            - Output ONLY raw HTML. No markdown fences, no explanations, no comments.
+            - Do NOT include templating logic or placeholders of any kind (e.g., {{ row.name }}, {% ... %}).
+            - Do NOT include <script>, <style>, external CSS/JS links, or inline JavaScript.
+            - Keep it small and readable: prefer a single <div> container, short headings, and either a simple <table> or a compact <ul>.
+            - Use Tailwind utility classes only (e.g., p-4, text-gray-700, table-auto, border, rounded, shadow).
+            - If data appears tabular, render a table with a header row derived from the keys in the first object (if present). If keys are unknown/inconsistent, render a two-column “Key / Value” table for each row.
+            - If there are no results, render a compact empty-state card that says “No results found.”
+            - Never fabricate columns or values not present in the provided data. If you cannot determine column names, use generic headers like “Column 1”, “Column 2”, etc.
+            - Absolutely NO extra prose before or after the HTML.
 
-        3. If the question is about database schema and SQL data is available, answer based on the schema information.
+            Context for rendering (use this to decide headings and rows):
+            SQL Query Results:
+            $sql_response
 
-        4. If the query is unrelated to databases or the available schema, politely inform the user that the question is out of context and you can only help with database-related queries.
-        
-        5. Give response in html and tailwindcss format.
+            User Question:
+            $question
+            """)
 
-        SQL Query Results: {sql_response}
+            formatted_prompt = prompt_template.substitute(
+                sql_response=sql_response_str,
+                question=question
+            )
+            
+            print("formatted prompt ",formatted_prompt)
 
-        User Question: {question}
-        """
-            formatted_prompt = prompt.format(sql_response=sql_response_str, question=question)
+
+
+            # formatted_prompt = prompt.format(sql_response=sql_response_str, question=question)
             # Execute response generation with retry logic
             for attempt in range(self.max_retries):
                 try:
@@ -498,7 +522,7 @@ class VoiceAssistant:
                         model=self.model_name,  # e.g., "llama3-8b-8192" or your preferred model
                         messages=[
                             {"role": "system", "content": formatted_prompt},
-                            {"role": "user", "content": "Generate the query based on the above question and schema."}
+                            {"role": "user", "content": "Render the results as HTML with Tailwind CSS only, no explanations or markdown."}
                         ],
                         temperature=0.1,
                         max_tokens=1000,
@@ -517,7 +541,7 @@ class VoiceAssistant:
                     if not cleaned_response:
                         raise Exception("Generated response is empty after cleaning")
 
-                    logger.info("Successfully generated final response")
+                    logger.info(f"Successfully generated final response------------- {cleaned_response}")
                     return cleaned_response
                     
                 except (GroqError, APIError, APIConnectionError) as e:
